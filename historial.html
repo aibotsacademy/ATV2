@@ -292,6 +292,24 @@ input[type=date],select{min-width:0}
 
 <script>
 const SCRIPT_URL = localStorage.getItem("avsec_apps_script") || "";
+
+// Clean hora: if it arrives as a Date string like "Sat Dec 30 1899 12:51:00..."
+// extract just HH:mm
+function cleanHora(hora) {
+  if (!hora) return "";
+  // Already HH:mm format
+  if (/^\d{1,2}:\d{2}$/.test(hora.trim())) return hora.trim();
+  // Date string from Sheets Time type
+  const m = hora.match(/(\d{1,2}):(\d{2}):\d{2}/);
+  if (m) return m[1].padStart(2,"0") + ":" + m[2];
+  return hora;
+}
+
+// Clean cedula/id_cred: remove .0 from numbers stored as float
+function cleanNum(val) {
+  if (!val) return "";
+  return String(val).replace(/\.0$/, "");
+}
 let currentUser  = null;
 let allRecords   = { inspeccion:[], control:[], rampa:[] };
 let filtered     = [];
@@ -318,7 +336,7 @@ window.onload = () => {
 };
 
 function goNewReport(){
-  window.location.href = "index.html?nuevo=1";
+  window.location.href = "AVSEC_PRO_OCR_fixed.html?nuevo=1";
 }
 
 function switchTab(tab, btn){
@@ -430,7 +448,7 @@ function buildResumen(){
             </div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-family:var(--mono);font-size:10px;color:var(--cyan)">${r.vuelo||""}</div>
-              <div style="font-family:var(--mono);font-size:8px;color:var(--dim)">${r.hora||""}</div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--dim)">${cleanHora(r.hora)}</div>
               ${exp?`<span class="badge badge-exp" style="margin-top:3px">⚠ VEN</span>`:""}
             </div>
           </div>`;
@@ -479,7 +497,7 @@ function renderRecordsTable(){
     return `<tr>
       <td><span class="badge ${shCls}">${shLbl}</span></td>
       <td style="white-space:nowrap">${r.fecha||""}</td>
-      <td>${r.hora||""}</td>
+      <td>${cleanHora(r.hora)}</td>
       <td style="color:var(--cyan);font-weight:700">${r.vuelo||""}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.nombre||"—"}</td>
       <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.empresa||""}</td>
@@ -509,10 +527,10 @@ function renderMobileCards(){
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
         <span class="badge ${shCls}">${shLbl}</span>
         <span style="font-family:var(--mono);font-size:10px;color:var(--cyan);font-weight:700">${r.vuelo||""}</span>
-        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-left:auto">${r.fecha||""} ${r.hora||""}</span>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-left:auto">${r.fecha||""} ${cleanHora(r.hora)}</span>
       </div>
       <div style="font-family:var(--head);font-size:12px;color:var(--t1);margin-bottom:3px">${r.nombre||"—"}</div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:7px">${r.empresa||""} · ${r.cedula||""}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:7px">${r.empresa||""} · ${cleanNum(r.cedula)}</div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <span class="badge ${r.direccion==="SALIDA"?"badge-out":"badge-in"}">${r.direccion==="SALIDA"?"⬆ SALIDA":"⬇ INGRESO"}</span>
         ${exp?`<span class="badge badge-exp">⚠ VENCIDA ${r.vigencia}</span>`
@@ -539,7 +557,9 @@ function buildResumable(){
   const groups={};
   all.forEach(r=>{
     // Skip completed
-    if((r.estatus||"").toLowerCase()==="completado") return;
+    // Skip only if explicitly marked completado
+    const est = (r.estatus||"").toLowerCase().trim();
+    if(est === "completado") return;
     // Oficiales solo ven sus propios reportes en proceso
     if(!isAdmin && (r.usuario||"").toLowerCase() !== myUser) return;
     const key=`${r.vuelo||"?"}|${r.fecha||"?"}|${r.usuario||"?"}`;
@@ -553,6 +573,7 @@ function buildResumable(){
 }
 
 function filterResumable(){
+  console.log("[RETOMAR] _resumableList:", window._resumableList?.length, "items", window._resumableList);
   const vFlight=(document.getElementById("retomar-vuelo")?.value||"").trim().toLowerCase();
   const vFecha=document.getElementById("retomar-fecha")?.value||"";
   const el=document.getElementById("resumable-list"); if(!el) return;
@@ -632,7 +653,7 @@ function resumeOperation(group){
     recoveredAt:new Date().toISOString(),
   };
   localStorage.setItem("avsec_recovery",JSON.stringify(recovery));
-  window.location.href="index.html?recover=1";
+  window.location.href="AVSEC_PRO_OCR_fixed.html?recover=1";
 }
 
 // ── HELPERS ───────────────────────────────────────────────────
