@@ -3633,9 +3633,31 @@ function applyRecovery(rec) {
     };
   });
 
-  // Restore zones and checkpoints from recovery data
-  state.zones            = rec.zones       || {};
-  state.rampCheckpoints  = rec.checkpoints || {};
+  // Restore zones: normalize from sheet format to state.zones format
+  const rawZones = rec.zones || {};
+  state.zones = {};
+  Object.keys(rawZones).forEach(function(zId) {
+    const z = rawZones[zId];
+    state.zones[zId] = {
+      finding: z.finding  || z.hallazgo || "clear",
+      note:    z.note     || z.nota     || "",
+      photo:   null,  // photo not stored in sheet
+      photos:  [],
+      time:    z.hora     || z.hora_zona || z.time || "",
+    };
+  });
+
+  // Restore checkpoints: normalize from sheet format to state.rampCheckpoints format
+  const rawCPs = rec.checkpoints || {};
+  state.rampCheckpoints = {};
+  Object.keys(rawCPs).forEach(function(cpId) {
+    const cp = rawCPs[cpId];
+    state.rampCheckpoints[cpId] = {
+      photo:     null,  // photo not in sheet
+      timestamp: cp.timestamp || cp.hora_cp || "",
+      done:      true,
+    };
+  });
   state.elapsed          = 0;
   state.accessBadges     = [];
   state._driveFolderId   = null;
@@ -3651,10 +3673,6 @@ function applyRecovery(rec) {
   if (rec.sheet === "inspeccion") {
     state.opMode = "inspect";
     const flt = state.currentFlight;
-    // Restore zones from recovery data if available
-    if (rec.zones && Object.keys(rec.zones).length > 0) {
-      state.zones = rec.zones;
-    }
     if (state.opBadges.length > 0) {
       // Credentials already logged → go straight to inspection grid
       showScreen("s-inspect");
@@ -3662,6 +3680,15 @@ function applyRecovery(rec) {
       renderBadgeStrip();
       renderZoneGrid();
       startTimer();
+      // Show progress toast if zones were recovered
+      const zCount = Object.keys(state.zones).length;
+      if (zCount > 0) {
+        const zt = document.createElement("div");
+        zt.style.cssText = "position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:rgba(0,229,255,.12);border:1px solid rgba(0,229,255,.35);border-radius:6px;padding:9px 18px;font-family:var(--mono);font-size:11px;color:var(--cyan);z-index:600;animation:slide-up .3s ease;white-space:nowrap;backdrop-filter:blur(10px)";
+        zt.textContent = `✅ ${zCount} zona${zCount!==1?"s":""} recuperada${zCount!==1?"s":""}`;
+        document.body.appendChild(zt);
+        setTimeout(()=>zt.remove(), 3000);
+      }
     } else {
       // No badges yet → show badge scan screen
       if($("badge-fid"))     $("badge-fid").textContent     = flt.id;
@@ -3688,6 +3715,15 @@ function applyRecovery(rec) {
     showScreen("s-ramp");
     rampTab("cred");
     renderRampBadgeLog();
+    // Show checkpoint recovery toast
+    const cpCount = Object.keys(state.rampCheckpoints).length;
+    if (cpCount > 0) {
+      const ct = document.createElement("div");
+      ct.style.cssText = "position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:rgba(255,179,0,.12);border:1px solid rgba(255,179,0,.35);border-radius:6px;padding:9px 18px;font-family:var(--mono);font-size:11px;color:var(--amber);z-index:600;animation:slide-up .3s ease;white-space:nowrap;backdrop-filter:blur(10px)";
+      ct.textContent = `📍 ${cpCount} checkpoint${cpCount!==1?"s":""} recuperado${cpCount!==1?"s":""}`;
+      document.body.appendChild(ct);
+      setTimeout(()=>ct.remove(), 3000);
+    }
   } else {
     goOpMode();
   }
