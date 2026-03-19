@@ -3512,7 +3512,12 @@ const ROLE_CFG = {
         const rec = JSON.parse(recovery);
         localStorage.removeItem("avsec_recovery");
         applyRecovery(rec);
-      } catch(e) { console.warn("Recovery parse error:", e); }
+      } catch(e) {
+        console.error("Recovery error:", e);
+        // Clear bad recovery data and go to officer home instead of getting stuck
+        localStorage.removeItem("avsec_recovery");
+        showScreen("s-ohome");
+      }
     }
   }
 })();
@@ -3538,13 +3543,20 @@ function applyRecovery(rec) {
   };
 
   // Recover badges (photos will be null since they're not in the sheet)
-  state.opBadges = (rec.badges||[]).map(b => ({
-    photo:     b.photo || generatePlaceholderBadge(b.ocr),
-    time:      b.time  || "",
-    late:      false,
-    direction: b.direction || "in",
-    ocr:       b.ocr || {},
-  }));
+  state.opBadges = (rec.badges||[]).map(b => {
+    let photo = b.photo;
+    if (!photo) {
+      try { photo = generatePlaceholderBadge(b.ocr); }
+      catch(e) { photo = null; } // skip placeholder if it fails
+    }
+    return {
+      photo:     photo,
+      time:      b.time  || "",
+      late:      false,
+      direction: b.direction || "in",
+      ocr:       b.ocr || {},
+    };
+  });
 
   state.zones         = {};
   state.elapsed       = 0;
@@ -3591,21 +3603,28 @@ function applyRecovery(rec) {
 }
 
 // Generate a placeholder badge image (SVG data URL) for recovered records
+// Uses encodeURIComponent to handle Unicode characters (tildes, ñ, etc.)
 function generatePlaceholderBadge(ocr) {
   const nombre  = (ocr?.nombre ||"—").slice(0,22).replace(/[<>&"]/g,"?");
-  const cedula  = (ocr?.cedula ||"—");
+  const cedula  = String(ocr?.cedula ||"—").replace(/\.0$/,"");
   const empresa = (ocr?.empresa||"").slice(0,22).replace(/[<>&"]/g,"?");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100">
     <rect width="160" height="100" fill="#0A2035"/>
     <rect width="160" height="1" y="0" fill="rgba(255,179,0,.4)"/>
     <rect width="160" height="1" y="99" fill="rgba(255,179,0,.4)"/>
-    <text x="8" y="16" font-family="monospace" font-size="9" fill="rgba(255,179,0,.7)" font-weight="bold">⚡ RECUPERADO</text>
+    <text x="8" y="16" font-family="monospace" font-size="9" fill="rgba(255,179,0,.7)" font-weight="bold">RECUPERADO</text>
     <text x="8" y="36" font-family="monospace" font-size="10" fill="#80DEEA">${nombre}</text>
     <text x="8" y="54" font-family="monospace" font-size="9" fill="#4DD0E1">ID: ${cedula}</text>
     <text x="8" y="70" font-family="monospace" font-size="9" fill="#37474F">${empresa}</text>
-    <text x="8" y="88" font-family="monospace" font-size="8" fill="rgba(0,229,255,.35)">sin foto disponible</text>
+    <text x="8" y="88" font-family="monospace" font-size="8" fill="rgba(0,229,255,.35)">sin foto</text>
   </svg>`;
-  return "data:image/svg+xml;base64," + btoa(svg);
+  // btoa() fails with non-latin1 chars — use encodeURIComponent approach
+  try {
+    return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
+  } catch(e) {
+    // Absolute fallback: return a solid color data URL (no text)
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  }
 }
 
 // ── Guard: intercept goOfficer and goAdmin with role check ────
