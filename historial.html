@@ -336,7 +336,7 @@ window.onload = () => {
 };
 
 function goNewReport(){
-  window.location.href = "index.html?nuevo=1";
+  window.location.href = "AVSEC_PRO_OCR_fixed.html?nuevo=1";
 }
 
 function switchTab(tab, btn){
@@ -564,11 +564,11 @@ function buildResumable(){
   const isAdmin = ["admin","supervisor","staff"].includes((currentUser.role||"").toLowerCase());
   const myUser  = (currentUser.username||"").toLowerCase().trim();
 
-  // Helper: build normalized lookup key
-  function mkKey(vuelo, fecha, usuario) {
-    return (vuelo||"?").trim().toUpperCase() + "|" +
-           (fecha||"?").trim() + "|" +
-           (usuario||"?").trim().toLowerCase();
+  // Helper: build normalized lookup key (vuelo+fecha only)
+  // usuario is already filtered before this point — don't include it in key
+  // to avoid mismatches when credential records have empty usuario field
+  function mkKey(vuelo, fecha) {
+    return (vuelo||"?").trim().toUpperCase() + "|" + (fecha||"?").trim();
   }
 
   // ── Build groups from credential records ──────────────────────
@@ -583,7 +583,7 @@ function buildResumable(){
     const rowUser = (r.usuario||"").toLowerCase().trim();
     if(est === "completado") return;
     if(!isAdmin && rowUser !== myUser) return;
-    const key = mkKey(r.vuelo, r.fecha, r.usuario);
+    const key = mkKey(r.vuelo, r.fecha);
     if(!groups[key]) groups[key]={
       vuelo:r.vuelo,aerolinea:r.aerolinea,fecha:r.fecha,
       gate:r.gate||"",arr:r.arr||"",dest:r.dest||"",
@@ -612,7 +612,7 @@ function buildResumable(){
 
   // ── Attach zones to groups (create group if missing) ──────────
   zonaRecords.forEach(r=>{
-    const key = mkKey(r.vuelo, r.fecha, r.usuario);
+    const key = mkKey(r.vuelo, r.fecha);
     // Create group if not exists (flight had zones but badge wasn't logged yet)
     if(!groups[key]) groups[key]={
       vuelo:r.vuelo,aerolinea:r.aerolinea||"",fecha:r.fecha,
@@ -631,7 +631,7 @@ function buildResumable(){
 
   // ── Attach checkpoints to groups (create group if missing) ────
   cpRecords.forEach(r=>{
-    const key = mkKey(r.vuelo, r.fecha, r.usuario);
+    const key = mkKey(r.vuelo, r.fecha);
     if(!groups[key]) groups[key]={
       vuelo:r.vuelo,aerolinea:r.aerolinea||"",fecha:r.fecha,
       gate:r.gate||"",arr:"",dest:"",dep:"",bridge:"",
@@ -748,7 +748,7 @@ function resumeOperation(group){
     recoveredAt:new Date().toISOString(),
   };
   localStorage.setItem("avsec_recovery",JSON.stringify(recovery));
-  window.location.href="index.html?recover=1";
+  window.location.href="AVSEC_PRO_OCR_fixed.html?recover=1";
 }
 
 // ── HELPERS ───────────────────────────────────────────────────
