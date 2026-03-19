@@ -336,7 +336,7 @@ window.onload = () => {
 };
 
 function goNewReport(){
-  window.location.href = "index.html?nuevo=1";
+  window.location.href = "AVSEC_PRO_OCR_fixed.html?nuevo=1";
 }
 
 function switchTab(tab, btn){
@@ -357,8 +357,9 @@ async function loadAll(){
   showLoading();
   try {
     const usuario = currentUser.username || "";
-    const isAdmin = currentUser.role==="admin" || currentUser.role==="supervisor";
+    const isAdmin = ["admin","supervisor","staff"].includes((currentUser.role||"").toLowerCase());
     // Oficiales solo ven sus propios datos; admins/supervisores ven todo
+    // admins/supervisors/staff see all; oficiales see only their own
     const qs = isAdmin
       ? "action=getData&sheet=all"
       : "action=getData&sheet=all&usuario=" + encodeURIComponent(usuario);
@@ -366,11 +367,17 @@ async function loadAll(){
     const data = await res.json();
     if(!data.ok) throw new Error(data.error);
     allRecords = data.data || { inspeccion:[], control:[], rampa:[] };
+    console.log("[historial] getData response: total=", data.total, 
+      "insp=", allRecords.inspeccion.length,
+      "ctrl=", allRecords.control.length,
+      "ramp=", allRecords.rampa.length);
     buildResumen();
     applyFilter();
     buildResumable();
   } catch(e){
-    showError("Error al cargar: " + e.message);
+    console.error("[historial] loadAll error:", e);
+    showError("Error al cargar datos: " + (e.message||"Sin respuesta del servidor") + 
+      '<br><span style="font-size:9px;color:var(--dim)">Verifique que el Apps Script esté desplegado y la URL sea correcta.</span>');
   }
 }
 
@@ -546,7 +553,7 @@ function renderMobileCards(){
 
 // ── RETOMAR ───────────────────────────────────────────────────
 function buildResumable(){
-  const isAdmin = currentUser.role==="admin" || currentUser.role==="supervisor";
+  const isAdmin = ["admin","supervisor","staff"].includes((currentUser.role||"").toLowerCase());
   const myUser  = (currentUser.username||"").toLowerCase();
 
   const all=[
@@ -554,14 +561,14 @@ function buildResumable(){
     ...allRecords.control.map(r=>({...r,_sheet:"control"})),
     ...allRecords.rampa.map(r=>({...r,_sheet:"rampa"})),
   ];
+  console.log("[buildResumable] all records:", all.length, "isAdmin:", isAdmin, "myUser:", myUser);
   const groups={};
   all.forEach(r=>{
-    // Skip completed
-    // Skip only if explicitly marked completado
     const est = (r.estatus||"").toLowerCase().trim();
+    const rowUser = (r.usuario||"").toLowerCase().trim();
+    console.log("[buildResumable] row:", r.vuelo, "est:", est, "user:", rowUser, "match:", rowUser===myUser);
     if(est === "completado") return;
-    // Oficiales solo ven sus propios reportes en proceso
-    if(!isAdmin && (r.usuario||"").toLowerCase() !== myUser) return;
+    if(!isAdmin && rowUser !== myUser) return;
     const key=`${r.vuelo||"?"}|${r.fecha||"?"}|${r.usuario||"?"}`;
     if(!groups[key]) groups[key]={vuelo:r.vuelo,aerolinea:r.aerolinea,fecha:r.fecha,
       gate:r.gate||"",arr:r.arr||"",dest:r.dest||"",dep:r.dep||"",
@@ -573,7 +580,7 @@ function buildResumable(){
 }
 
 function filterResumable(){
-  console.log("[RETOMAR] _resumableList:", window._resumableList?.length, "items", window._resumableList);
+  console.log("[filterResumable] list length:", (window._resumableList||[]).length);
   const vFlight=(document.getElementById("retomar-vuelo")?.value||"").trim().toLowerCase();
   const vFecha=document.getElementById("retomar-fecha")?.value||"";
   const el=document.getElementById("resumable-list"); if(!el) return;
@@ -653,7 +660,7 @@ function resumeOperation(group){
     recoveredAt:new Date().toISOString(),
   };
   localStorage.setItem("avsec_recovery",JSON.stringify(recovery));
-  window.location.href="index.html?recover=1";
+  window.location.href="AVSEC_PRO_OCR_fixed.html?recover=1";
 }
 
 // ── HELPERS ───────────────────────────────────────────────────
