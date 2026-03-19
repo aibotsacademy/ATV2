@@ -360,38 +360,31 @@ async function loadAll(){
     const isAdmin = ["admin","supervisor","staff"].includes((currentUser.role||"").toLowerCase());
     const uParam  = isAdmin ? "" : "&usuario=" + encodeURIComponent(usuario);
 
-    // Helper: fetch a single sheet safely (CORS + redirect safe)
-    async function fetchSheet(sheet) {
-      try {
-        const r = await fetch(
-          `${SCRIPT_URL}?action=getData&sheet=${sheet}${uParam}`,
-          { redirect: "follow" }
-        );
-        const j = await r.json();
-        return j.ok ? (j.data?.[sheet] || []) : [];
-      } catch(e) {
-        console.warn("[historial] fetch failed for sheet:", sheet, e.message);
-        return [];
-      }
+    // Single robust fetch — gets all sheets in one call
+    // Falls back gracefully if zonas/checkpoints don't exist yet in old script
+    async function doFetch(qs) {
+      const r = await fetch(`${SCRIPT_URL}?${qs}`, { redirect: "follow" });
+      return r.json();
     }
 
-    // Fetch all sheets in parallel, each failure returns [] independently
-    const [insp, ctrl, ramp, zonas, cps] = await Promise.all([
-      fetchSheet("inspeccion"),
-      fetchSheet("control"),
-      fetchSheet("rampa"),
-      fetchSheet("zonas"),
-      fetchSheet("checkpoints"),
-    ]);
-
-    allRecords = {
-      inspeccion:  insp,
-      control:     ctrl,
-      rampa:       ramp,
-      zonas:       zonas,
-      checkpoints: cps,
-    };
-
+    // Primary: try to get all 5 sheets in one call
+    let insp=[], ctrl=[], ramp=[], zonas=[], cps=[];
+    try {
+      const d = await doFetch(`action=getData&sheet=all${uParam}`);
+      if (d.ok) {
+        insp  = d.data?.inspeccion  || [];
+        ctrl  = d.data?.control     || [];
+        ramp  = d.data?.rampa       || [];
+        zonas = d.data?.zonas       || [];
+        cps   = d.data?.checkpoints || [];
+      }
+    } catch(e) {
+      console.warn("[historial] sheet=all failed:", e.message);
+      // Fallback: fetch credential sheets individually (old script compat)
+      try { const d=await doFetch(`action=getData&sheet=inspeccion${uParam}`); insp=d.data?.inspeccion||[]; } catch(e){}
+      try { const d=await doFetch(`action=getData&sheet=control${uParam}`);    ctrl=d.data?.control||[];    } catch(e){}
+      try { const d=await doFetch(`action=getData&sheet=rampa${uParam}`);      ramp=d.data?.rampa||[];      } catch(e){}
+    }
     console.log("[historial] loaded — insp:", allRecords.inspeccion.length,
       "ctrl:", allRecords.control.length, "ramp:", allRecords.rampa.length,
       "zonas:", allRecords.zonas.length, "cps:", allRecords.checkpoints.length);
