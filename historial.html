@@ -358,37 +358,38 @@ async function loadAll(){
   try {
     const usuario = currentUser.username || "";
     const isAdmin = ["admin","supervisor","staff"].includes((currentUser.role||"").toLowerCase());
-    // Oficiales solo ven sus propios datos; admins/supervisores ven todo
-    // admins/supervisors/staff see all; oficiales see only their own
-    const qs = isAdmin
-      ? "action=getData&sheet=all"
-      : "action=getData&sheet=all&usuario=" + encodeURIComponent(usuario);
-    const res  = await fetch(`${SCRIPT_URL}?${qs}`);
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error);
+    const uParam  = isAdmin ? "" : "&usuario=" + encodeURIComponent(usuario);
+
+    // Fetch each sheet separately to avoid timeout on combined request
+    const [r1,r2,r3,r4,r5] = await Promise.all([
+      fetch(`${SCRIPT_URL}?action=getData&sheet=inspeccion${uParam}`).then(r=>r.json()),
+      fetch(`${SCRIPT_URL}?action=getData&sheet=control${uParam}`).then(r=>r.json()),
+      fetch(`${SCRIPT_URL}?action=getData&sheet=rampa${uParam}`).then(r=>r.json()),
+      fetch(`${SCRIPT_URL}?action=getData&sheet=zonas${uParam}`).then(r=>r.json()),
+      fetch(`${SCRIPT_URL}?action=getData&sheet=checkpoints${uParam}`).then(r=>r.json()),
+    ]);
+
     allRecords = {
-      inspeccion:  (data.data?.inspeccion  || []),
-      control:     (data.data?.control     || []),
-      rampa:       (data.data?.rampa       || []),
-      zonas:       (data.data?.zonas       || []),
-      checkpoints: (data.data?.checkpoints || []),
+      inspeccion:  (r1.data?.inspeccion  || []),
+      control:     (r2.data?.control     || []),
+      rampa:       (r3.data?.rampa       || []),
+      zonas:       (r4.data?.zonas       || []),
+      checkpoints: (r5.data?.checkpoints || []),
     };
-    console.log("[historial] getData response: total=", data.total,
-      "insp=",  allRecords.inspeccion.length,
-      "ctrl=",  allRecords.control.length,
-      "ramp=",  allRecords.rampa.length,
-      "zonas=", allRecords.zonas.length,
-      "cps=",   allRecords.checkpoints.length);
+
+    console.log("[historial] loaded — insp:", allRecords.inspeccion.length,
+      "ctrl:", allRecords.control.length, "ramp:", allRecords.rampa.length,
+      "zonas:", allRecords.zonas.length, "cps:", allRecords.checkpoints.length);
+
     buildResumen();
     applyFilter();
     buildResumable();
   } catch(e){
     console.error("[historial] loadAll error:", e);
-    showError("Error al cargar datos: " + (e.message||"Sin respuesta del servidor") + 
-      '<br><span style="font-size:9px;color:var(--dim)">Verifique que el Apps Script esté desplegado y la URL sea correcta.</span>');
+    showError("Error al cargar datos: " + (e.message||"Sin respuesta") +
+      '<br><span style="font-size:9px;color:var(--dim)">Verifique la URL del Apps Script.</span>');
   }
 }
-
 function showLoading(){
   const kg = document.getElementById("kpi-grid");
   if(kg) kg.innerHTML = `<div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;
