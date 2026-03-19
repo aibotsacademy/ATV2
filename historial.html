@@ -360,21 +360,36 @@ async function loadAll(){
     const isAdmin = ["admin","supervisor","staff"].includes((currentUser.role||"").toLowerCase());
     const uParam  = isAdmin ? "" : "&usuario=" + encodeURIComponent(usuario);
 
-    // Fetch each sheet separately to avoid timeout on combined request
-    const [r1,r2,r3,r4,r5] = await Promise.all([
-      fetch(`${SCRIPT_URL}?action=getData&sheet=inspeccion${uParam}`).then(r=>r.json()),
-      fetch(`${SCRIPT_URL}?action=getData&sheet=control${uParam}`).then(r=>r.json()),
-      fetch(`${SCRIPT_URL}?action=getData&sheet=rampa${uParam}`).then(r=>r.json()),
-      fetch(`${SCRIPT_URL}?action=getData&sheet=zonas${uParam}`).then(r=>r.json()),
-      fetch(`${SCRIPT_URL}?action=getData&sheet=checkpoints${uParam}`).then(r=>r.json()),
+    // Helper: fetch a single sheet safely (CORS + redirect safe)
+    async function fetchSheet(sheet) {
+      try {
+        const r = await fetch(
+          `${SCRIPT_URL}?action=getData&sheet=${sheet}${uParam}`,
+          { redirect: "follow" }
+        );
+        const j = await r.json();
+        return j.ok ? (j.data?.[sheet] || []) : [];
+      } catch(e) {
+        console.warn("[historial] fetch failed for sheet:", sheet, e.message);
+        return [];
+      }
+    }
+
+    // Fetch all sheets in parallel, each failure returns [] independently
+    const [insp, ctrl, ramp, zonas, cps] = await Promise.all([
+      fetchSheet("inspeccion"),
+      fetchSheet("control"),
+      fetchSheet("rampa"),
+      fetchSheet("zonas"),
+      fetchSheet("checkpoints"),
     ]);
 
     allRecords = {
-      inspeccion:  (r1.data?.inspeccion  || []),
-      control:     (r2.data?.control     || []),
-      rampa:       (r3.data?.rampa       || []),
-      zonas:       (r4.data?.zonas       || []),
-      checkpoints: (r5.data?.checkpoints || []),
+      inspeccion:  insp,
+      control:     ctrl,
+      rampa:       ramp,
+      zonas:       zonas,
+      checkpoints: cps,
     };
 
     console.log("[historial] loaded — insp:", allRecords.inspeccion.length,
