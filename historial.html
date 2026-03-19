@@ -562,52 +562,95 @@ function renderMobileCards(){
 // ── RETOMAR ───────────────────────────────────────────────────
 function buildResumable(){
   const isAdmin = ["admin","supervisor","staff"].includes((currentUser.role||"").toLowerCase());
-  const myUser  = (currentUser.username||"").toLowerCase();
+  const myUser  = (currentUser.username||"").toLowerCase().trim();
 
+  // Helper: build normalized lookup key
+  function mkKey(vuelo, fecha, usuario) {
+    return (vuelo||"?").trim().toUpperCase() + "|" +
+           (fecha||"?").trim() + "|" +
+           (usuario||"?").trim().toLowerCase();
+  }
+
+  // ── Build groups from credential records ──────────────────────
   const all=[
     ...allRecords.inspeccion.map(r=>({...r,_sheet:"inspeccion"})),
     ...allRecords.control.map(r=>({...r,_sheet:"control"})),
     ...allRecords.rampa.map(r=>({...r,_sheet:"rampa"})),
   ];
-  console.log("[buildResumable] all records:", all.length, "isAdmin:", isAdmin, "myUser:", myUser);
   const groups={};
   all.forEach(r=>{
-    const est = (r.estatus||"").toLowerCase().trim();
+    const est     = (r.estatus||"").toLowerCase().trim();
     const rowUser = (r.usuario||"").toLowerCase().trim();
-    console.log("[buildResumable] row:", r.vuelo, "est:", est, "user:", rowUser, "match:", rowUser===myUser);
     if(est === "completado") return;
     if(!isAdmin && rowUser !== myUser) return;
-    const key=`${r.vuelo||"?"}|${r.fecha||"?"}|${r.usuario||"?"}`;
-    if(!groups[key]) groups[key]={vuelo:r.vuelo,aerolinea:r.aerolinea,fecha:r.fecha,
-      gate:r.gate||"",arr:r.arr||"",dest:r.dest||"",dep:r.dep||"",bridge:r.bridge||"",
-      usuario:r.usuario||"",records:[],sheet:r._sheet,zones:{},checkpoints:{}};
+    const key = mkKey(r.vuelo, r.fecha, r.usuario);
+    if(!groups[key]) groups[key]={
+      vuelo:r.vuelo,aerolinea:r.aerolinea,fecha:r.fecha,
+      gate:r.gate||"",arr:r.arr||"",dest:r.dest||"",
+      dep:r.dep||"",bridge:r.bridge||"",
+      usuario:r.usuario||"",records:[],
+      sheet:r._sheet,zones:{},checkpoints:{}
+    };
     groups[key].records.push(r);
   });
-  // Collect zone and checkpoint records into each group
+
+  // ── Filter zonas/checkpoints for current user ─────────────────
   const zonaRecords = (allRecords.zonas||[]).filter(r=>{
-    if(!r || !r.vuelo) return false;
+    if(!r?.vuelo) return false;
     if((r.estatus||"").toLowerCase()==="completado") return false;
     if(!isAdmin && (r.usuario||"").toLowerCase().trim() !== myUser) return false;
     return true;
   });
   const cpRecords = (allRecords.checkpoints||[]).filter(r=>{
-    if(!r || !r.vuelo) return false;
+    if(!r?.vuelo) return false;
     if((r.estatus||"").toLowerCase()==="completado") return false;
     if(!isAdmin && (r.usuario||"").toLowerCase().trim() !== myUser) return false;
     return true;
   });
-  console.log("[buildResumable] zonaRecords:", zonaRecords.length, "cpRecords:", cpRecords.length);
+
+  console.log("[buildResumable] badges:", all.length, "zonas:", zonaRecords.length, "cps:", cpRecords.length);
+
+  // ── Attach zones to groups (create group if missing) ──────────
   zonaRecords.forEach(r=>{
-    const key=`${r.vuelo||"?"}|${r.fecha||"?"}|${r.usuario||"?"}`;
-    if(groups[key] && r.zona_id) groups[key].zones[r.zona_id]={
-      finding:r.hallazgo,note:r.nota,hora:r.hora_zona,fotos:r.fotos
+    const key = mkKey(r.vuelo, r.fecha, r.usuario);
+    // Create group if not exists (flight had zones but badge wasn't logged yet)
+    if(!groups[key]) groups[key]={
+      vuelo:r.vuelo,aerolinea:r.aerolinea||"",fecha:r.fecha,
+      gate:r.gate||"",arr:"",dest:"",dep:"",bridge:"",
+      usuario:r.usuario||"",records:[],
+      sheet:"inspeccion",zones:{},checkpoints:{}
     };
+    if(r.zona_id) {
+      groups[key].zones[r.zona_id]={
+        finding:r.hallazgo||"clear",note:r.nota||"",
+        hora:r.hora_zona||"",fotos:r.fotos||0
+      };
+    }
+    console.log("[zona] key:", key, "zona_id:", r.zona_id, "group found:", !!groups[key]);
   });
+
+  // ── Attach checkpoints to groups (create group if missing) ────
   cpRecords.forEach(r=>{
-    const key=`${r.vuelo||"?"}|${r.fecha||"?"}|${r.usuario||"?"}`;
-    if(groups[key] && r.cp_id) groups[key].checkpoints[r.cp_id]={
-      timestamp:r.hora_cp,done:true,hasPhoto:r.tiene_foto==="Si"
+    const key = mkKey(r.vuelo, r.fecha, r.usuario);
+    if(!groups[key]) groups[key]={
+      vuelo:r.vuelo,aerolinea:r.aerolinea||"",fecha:r.fecha,
+      gate:r.gate||"",arr:"",dest:"",dep:"",bridge:"",
+      usuario:r.usuario||"",records:[],
+      sheet:"rampa",zones:{},checkpoints:{}
     };
+    if(r.cp_id) {
+      groups[key].checkpoints[r.cp_id]={
+        timestamp:r.hora_cp||"",done:true,
+        hasPhoto:r.tiene_foto==="Si"
+      };
+    }
+    console.log("[cp] key:", key, "cp_id:", r.cp_id, "group found:", !!groups[key]);
+  });
+
+  console.log("[buildResumable] groups:", Object.keys(groups).length);
+  Object.keys(groups).forEach(k=>{
+    const g=groups[k];
+    console.log("  group:", k, "records:", g.records.length, "zones:", Object.keys(g.zones).length, "cps:", Object.keys(g.checkpoints).length);
   });
 
   window._resumableList=Object.values(groups).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
