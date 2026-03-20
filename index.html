@@ -1579,7 +1579,6 @@ function checkOnlyCP(cpId) {
   renderCheckpointGrid();
   renderCheckpoint2Grid();
   // Toast
-  const cp = [...CHECKPOINTS,...CHECKPOINTS2].find(c=>c.id===cpId);
   const toast = document.createElement("div");
   toast.style.cssText = "position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:rgba(255,179,0,.15);border:1px solid rgba(255,179,0,.4);border-radius:6px;padding:9px 18px;font-family:var(--mono);font-size:11px;color:var(--amber);z-index:200;animation:slide-up .3s ease;white-space:nowrap;backdrop-filter:blur(10px)";
   toast.textContent = state.rampCheckpoints[cpId] ? `✓ ${cp?.label||cpId} — ${t12()}` : `↩ ${cp?.label||cpId} desmarcado`;
