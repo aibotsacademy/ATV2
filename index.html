@@ -3820,6 +3820,9 @@ function confirmSignature() {
   const canvas = $("sign-canvas");
   const signDataUrl = canvas ? canvas.toDataURL("image/png", 0.85) : null;
 
+  // Save callback BEFORE closing modal (closeSignatureModal nulls _signCallback)  
+const cb = _signCallback;
+  
   // Store signature on state
   state.signature = {
     dataUrl:   signDataUrl,
@@ -3838,7 +3841,7 @@ function confirmSignature() {
   }
 
   closeSignatureModal();
-  if(_signCallback) _signCallback();
+  if(cb) cb();
 }
 
 function clearSignature() {
