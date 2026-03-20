@@ -3974,6 +3974,7 @@ function initSignCanvas() {
 // ─── Intercept the 3 finish functions ──────────────────────────
 function finishInspectionSigned() {
   openSignatureModal("inspect", function() {
+  console.log("[debug] opBadges:", state.opBadges?.length, JSON.stringify(state.opBadges?.[0]));
     stopTimer();
     finalizarReporte("inspeccion");
     buildDoneScreen();
