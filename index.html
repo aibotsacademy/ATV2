@@ -1568,9 +1568,9 @@ function renderCheckpoint2Grid() { renderCpGrid("checkpoint2-grid", CHECKPOINTS2
 // Check-only (no photo) checkpoint
 function checkOnlyCP(cpId) {
   if(!state.rampCheckpoints) state.rampCheckpoints = {};
+  const cp = [...CHECKPOINTS,...CHECKPOINTS2].find(c=>c.id===cpId);  // ← MOVER AQUÍ
   const already = state.rampCheckpoints[cpId];
   if(already) {
-    // Toggle off
     delete state.rampCheckpoints[cpId];
   } else {
     state.rampCheckpoints[cpId] = { photo: null, timestamp: t12(), done: true };
