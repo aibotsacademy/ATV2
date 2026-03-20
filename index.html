@@ -1753,7 +1753,7 @@ function showOpDone(mode) {
           const done = cps[cp.id];
           return `<div style="padding:10px 12px;background:rgba(7,24,40,.9);display:flex;align-items:center;gap:8px">
             ${done
-              ? `<img src="${done.photo}" style="width:38px;height:38px;border-radius:4px;object-fit:cover;border:1px solid ${cp.color}40;flex-shrink:0"/>`
+              ? (done.photo ? `<img src="${done.photo}" style="width:38px;height:38px;border-radius:4px;object-fit:cover;border:1px solid ${cp.color}40;flex-shrink:0"/>` : `<div style="width:38px;height:38px;border-radius:4px;background:rgba(0,229,255,.08);border:1px solid ${cp.color}40;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">✓</div>`)
               : `<div style="width:38px;height:38px;border-radius:4px;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;opacity:.4">${cp.icon}</div>`}
             <div style="min-width:0">
               <div style="font-family:var(--head);font-size:9px;color:${done?cp.color:"var(--dim)"};letter-spacing:.03em">${cp.label}</div>
