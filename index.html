@@ -4008,16 +4008,25 @@ async function enviarCorreoReporte(tipo) {
   const f    = state.currentFlight || {};
   const user = getSession() || {};
   const now  = new Date();
+
+  const allCPs = [
+    ...(typeof CHECKPOINTS  !== "undefined" ? CHECKPOINTS  : []),
+    ...(typeof CHECKPOINTS2 !== "undefined" ? CHECKPOINTS2 : []),
+  ];
+
   const payload = {
-    action:       "enviarcorreo",
-    tipo:         tipo,
-    vuelo:        f.id        || "",
-    aerolinea:    f.airline   || "",
-    gate:         f.gate      || "",
-    fecha:        `${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
-    hora:         `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,
-    oficial:      user.nombre || user.username || "",
-    
+    action:     "enviarcorreo",
+    tipo:       tipo,
+    vuelo:      f.id       || "",
+    aerolinea:  f.airline  || "",
+    gate:       f.gate     || "",
+    dest:       f.dest     || "",
+    bridge:     f.bridge   || "",
+    fecha:      `${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
+    hora:       `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,
+    oficial:    user.nombre || user.username || "",
+    folderName: f.folderName || f.id || "",
+
     credenciales: (state.opBadges||[]).map(b => ({
       nombre:    b.ocr?.nombre   || "—",
       cedula:    b.ocr?.cedula   || "—",
@@ -4060,7 +4069,8 @@ async function enviarCorreoReporte(tipo) {
     console.error("[correo] Error fetch:", e.message);
   }
 }
-function addSignatureToDoneScreen() {
+
+  function addSignatureToDoneScreen() {
   if(!state.signature?.dataUrl) return;
   // Try inserting into both done and opdone screens
   ["done-credentials","opdone-credentials"].forEach(id=>{
