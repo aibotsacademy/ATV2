@@ -4017,9 +4017,32 @@ async function enviarCorreoReporte(tipo) {
     fecha:        `${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
     hora:         `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,
     oficial:      user.nombre || user.username || "",
-    credenciales: state.opBadges?.length || state.accessBadges?.length || 0,
-    checkpoints:  Object.keys(state.rampCheckpoints||{}).length,
-    folderName:   f.folderName || f.id || "",
+    credenciales: JSON.stringify((state.opBadges||[]).map(b=>({
+      nombre:    b.ocr?.nombre    || "—",
+      cedula:    b.ocr?.cedula    || "—",
+      empresa:   b.ocr?.empresa   || "—",
+      vigencia:  b.ocr?.vigencia  || "—",
+      direccion: b.direction==="out" ? "SALIDA" : "INGRESO",
+      hora:      b.time           || "",
+    }))),
+    zonas: JSON.stringify(Object.entries(state.zones||{}).map(([id,z])=>({
+      id,
+      hallazgo: z.finding || "",
+      nota:     z.note    || "",
+      hora:     z.time    || "",
+    }))),
+    checkpoints: JSON.stringify(Object.entries(state.rampCheckpoints||{}).map(([id,cp])=>{
+      const def = [...(typeof CHECKPOINTS!=="undefined"?CHECKPOINTS:[]),
+                   ...(typeof CHECKPOINTS2!=="undefined"?CHECKPOINTS2:[])].find(c=>c.id===id);
+      return {
+        id,
+        label:    def?.label  || id,
+        grupo:    id.startsWith("cp2") ? "CP2 — Bodega/Gaseo" : "CP1 — Puente/Pasajeros",
+        hora:     cp.timestamp || "",
+        tieneFoto: cp.photo ? "Sí" : "No",
+      };
+    })),
+    folderName: f.folderName || f.id || "",
   };
   console.log("[correo] Enviando payload:", JSON.stringify(payload));
   try {
