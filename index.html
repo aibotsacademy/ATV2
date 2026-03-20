@@ -4019,6 +4019,7 @@ async function enviarCorreoReporte(tipo) {
     oficial:      user.nombre || user.username || "",
     credenciales: state.opBadges?.length || state.accessBadges?.length || 0,
     checkpoints:  Object.keys(state.rampCheckpoints||{}).length,
+    folderName:   f.folderName || f.id || "",
   };
   console.log("[correo] Enviando payload:", JSON.stringify(payload));
   try {
