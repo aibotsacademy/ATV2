@@ -3974,36 +3974,45 @@ function initSignCanvas() {
 // ─── Intercept the 3 finish functions ──────────────────────────
 function finishInspectionSigned() {
   openSignatureModal("inspect", function() {
-  console.log("[debug] opBadges:", state.opBadges?.length, JSON.stringify(state.opBadges?.[0]));
+    const _badges      = (state.opBadges||[]).slice();
+    const _zones       = Object.assign({}, state.zones||{});
+    const _checkpoints = Object.assign({}, state.rampCheckpoints||{});
     stopTimer();
     finalizarReporte("inspeccion");
     buildDoneScreen();
     showScreen("s-done");
     addSignatureToDoneScreen();
-     enviarCorreoReporte("Inspección de Aeronave");
+    enviarCorreoReporte("Inspección de Aeronave", _badges, _zones, _checkpoints);
   });
 }
 
 function finishAccessControlSigned() {
   openSignatureModal("access", function() {
+    const _badges      = (state.accessBadges||[]).slice();
+    const _zones       = Object.assign({}, state.zones||{});
+    const _checkpoints = Object.assign({}, state.rampCheckpoints||{});
     stopTimer();
     finalizarReporte("control");
     showOpDone("access");
     addSignatureToDoneScreen();
+    enviarCorreoReporte("Control de Accesos", _badges, _zones, _checkpoints);
   });
 }
 
 function finishRampSigned() {
-  openSignatureModal("ramp", function() {
+ openSignatureModal("ramp", function() {
+    const _badges      = (state.accessBadges||[]).slice();
+    const _zones       = Object.assign({}, state.zones||{});
+    const _checkpoints = Object.assign({}, state.rampCheckpoints||{});
     stopTimer();
     finalizarReporte("rampa");
     showOpDone("ramp");
     addSignatureToDoneScreen();
-    enviarCorreoReporte("Inspección de Aeronave");
+    enviarCorreoReporte("Operación de Rampa", _badges, _zones, _checkpoints);
   });
 }
 
-async function enviarCorreoReporte(tipo) {
+async function enviarCorreoReporte(tipo, _opBadges, _zones, _rampCheckpoints) {
   const url = getAppsScriptUrl();
   if(!url) { console.warn("[correo] No hay URL configurada"); return; }
   const f    = state.currentFlight || {};
@@ -4028,7 +4037,7 @@ async function enviarCorreoReporte(tipo) {
     oficial:    user.nombre || user.username || "",
     folderName: f.folderName || f.id || "",
 
-    credenciales: (state.opBadges||[]).map(b => ({
+    credenciales: (_opBadges||[]).map(b => ({
       nombre:    b.ocr?.nombre   || "—",
       cedula:    b.ocr?.cedula   || "—",
       empresa:   b.ocr?.empresa  || "—",
@@ -4037,14 +4046,14 @@ async function enviarCorreoReporte(tipo) {
       hora:      b.time || "",
     })),
 
-    zonas: Object.entries(state.zones || {}).map(([id, z]) => ({
+    zonas: Object.entries(_zones||{}).map(([id, z]) => ({
       id,
       hallazgo: z.finding || "",
       nota:     z.note    || "",
       hora:     z.time    || "",
     })),
 
-    checkpoints: Object.entries(state.rampCheckpoints || {}).map(([id, cp]) => {
+    checkpoints: Object.entries(_rampCheckpoints||{}).map(([id, cp]) => {
       const def = allCPs.find(c => c.id === id);
       return {
         id,
