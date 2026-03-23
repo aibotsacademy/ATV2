@@ -4395,16 +4395,30 @@ function addSignatureToDoneScreen() {
   </div>
 
   <!-- ══ PANEL: RESULTADOS ════════════════════════════════════════════════ -->
-  <!-- overflow-y:scroll + -webkit-overflow-scrolling:touch = scroll nativo iOS -->
-  <div id="cv-results-panel" style="display:none;flex:1;
-    overflow-y:scroll;overflow-x:hidden;
-    -webkit-overflow-scrolling:touch;
-    overscroll-behavior-y:contain;
-    position:relative;">
-    <!-- div interno con el padding y gap — el scroll ocurre en el padre -->
-    <div id="cv-results-inner" style="
-      padding:14px 16px 60px;
-      display:flex;flex-direction:column;gap:12px;">
+  <!--
+    ESTRUCTURA DE SCROLL:
+    #cv-results-panel  → contenedor flex, overflow-y:scroll (hace el scroll)
+    #cv-results-inner  → contenido real con padding y gap entre secciones
+    La imagen va sin max-height para mostrarse completa.
+    El gap de 80px al fondo evita que los botones queden bajo la barra del browser.
+  -->
+  <div id="cv-results-panel"
+    style="display:none;
+           flex:1;
+           overflow-y:scroll;
+           overflow-x:hidden;
+           -webkit-overflow-scrolling:touch;
+           overscroll-behavior-y:contain;
+           position:relative;
+           background:var(--deep,#030F1C);">
+
+    <div id="cv-results-inner"
+      style="display:flex;
+             flex-direction:column;
+             gap:14px;
+             padding:0 0 80px 0;">
+      <!-- La imagen va sin padding horizontal para ocupar todo el ancho -->
+      <!-- El resto de secciones tienen padding interno propio            -->
     </div>
   </div>
 
@@ -5031,145 +5045,347 @@ function enrichWithMP(analysis) {
 // RENDERIZADO DE RESULTADOS
 // ─────────────────────────────────────────────────────────────────────────────
 async function renderCvResults(photoUrl, analysis) {
-  // Inyectar en #cv-results-inner (div hijo con padding) — el scroll lo maneja #cv-results-panel
-  const panel = document.getElementById("cv-results-inner") || document.getElementById("cv-results-panel");
+  // Buscar el panel — compatible con ambas versiones del modal
+  const outer = document.getElementById("cv-results-panel");
+  const inner = document.getElementById("cv-results-inner");
+  const panel = inner || outer;
   if (!panel) return;
   stopCvProgress();
 
-  const annotated  = await annotatePhoto(photoUrl, analysis);
+  // 1. Mostrar panel ANTES de anotar la foto — así el usuario ve que algo pasó
+  showCvPanel("results");
+  if (outer) outer.scrollTop = 0;
+
+  // 2. Mostrar foto original inmediatamente mientras se procesan las anotaciones
+  panel.innerHTML = `
+    <!-- IMAGEN: ocupa todo el ancho, sin bordes laterales -->
+    <div style="position:relative;background:#000;line-height:0;
+      border-bottom:2px solid rgba(0,229,255,.2);">
+
+      <img id="cv-annotated-photo" src="${photoUrl}"
+        style="width:100%;height:auto;display:block;
+               object-fit:contain;min-height:200px;
+               background:#000;cursor:zoom-in;"
+        onclick="cvToggleImageZoom(this)"/>
+
+      <!-- Overlay animado mientras se anotan los bboxes -->
+      <div id="cv-annotating-overlay"
+        style="position:absolute;inset:0;background:rgba(2,11,20,.5);
+               display:flex;align-items:center;justify-content:center;
+               pointer-events:none;">
+        <span style="font-family:'Share Tech Mono',monospace;font-size:10px;
+          color:#00E5FF;animation:blink 1s infinite;
+          background:rgba(2,11,20,.8);padding:6px 14px;border-radius:4px;
+          border:1px solid rgba(0,229,255,.3);">
+          ✦ Anotando con IA...
+        </span>
+      </div>
+
+      <!-- Badges sobre la imagen -->
+      <div style="position:absolute;top:8px;left:8px;display:flex;gap:5px;
+        flex-wrap:wrap;pointer-events:none;">
+        <span style="font-family:'Share Tech Mono',monospace;font-size:8px;
+          color:#00E5FF;background:rgba(2,11,20,.88);padding:3px 8px;
+          border-radius:3px;border:1px solid rgba(0,229,255,.35);">
+          📡 ${cvState.cpLabel}
+        </span>
+        <span style="font-family:'Share Tech Mono',monospace;font-size:8px;
+          color:#39FF14;background:rgba(2,11,20,.88);padding:3px 8px;
+          border-radius:3px;border:1px solid rgba(57,255,20,.35);">
+          MP · ${cvState.detections.length}obj · ${cvState.fps}fps
+        </span>
+      </div>
+
+      <!-- Hint zoom -->
+      <div style="position:absolute;bottom:8px;right:8px;pointer-events:none;">
+        <span style="font-family:'Share Tech Mono',monospace;font-size:8px;
+          color:rgba(0,229,255,.7);background:rgba(2,11,20,.82);
+          padding:3px 8px;border-radius:3px;">🔍 ampliar</span>
+      </div>
+    </div>
+
+    <!-- CONTENIDO: con padding lateral de 14px -->
+    <div id="cv-results-body"
+      style="display:flex;flex-direction:column;gap:14px;padding:14px 14px 0;">
+    </div>`;
+
+  // 3. Anotar la foto en segundo plano
+  const annotated = await annotatePhoto(photoUrl, analysis);
+
+  // 4. Actualizar imagen con anotaciones y quitar overlay
+  const imgEl = document.getElementById("cv-annotated-photo");
+  if (imgEl) imgEl.src = annotated;
+  const overlayEl = document.getElementById("cv-annotating-overlay");
+  if (overlayEl) overlayEl.remove();
+
+  // 5. Renderizar el resto del análisis
+  const body = document.getElementById("cv-results-body");
+  if (!body) return;
+
   const score      = analysis.puntaje_seguridad ?? 80;
-  const scoreColor = score >= 80 ? "var(--neon)" : score >= 60 ? "var(--amber)" : "var(--red)";
+  const scoreColor = score >= 80 ? "#39FF14" : score >= 60 ? "#FFB300" : "#FF1744";
   const alertas    = analysis.alertas || [];
   const criticas   = alertas.filter(a => a.nivel === "CRITICO");
   const warns      = alertas.filter(a => a.nivel === "ADVERTENCIA");
+  const infos      = alertas.filter(a => a.nivel === "INFO");
 
-  panel.innerHTML = `
-    <div style="position:relative;border-radius:10px;overflow:hidden;border:1px solid rgba(0,229,255,.3);margin-bottom:14px">
-      <!-- Imagen sin max-height — se ve completa. Tap para zoom -->
-      <img id="cv-annotated-photo" src="${annotated}"
-        style="width:100%;height:auto;display:block;object-fit:contain;background:#000;cursor:zoom-in;"
-        onclick="cvToggleImageZoom(this)" title="Toca para ampliar"/>
-      <div style="position:absolute;bottom:6px;right:8px;font-family:var(--mono);font-size:7px;
-        color:rgba(0,229,255,.65);background:rgba(2,11,20,.8);padding:2px 6px;border-radius:3px;
-        pointer-events:none;">🔍 toca para ampliar</div>
-      <div style="position:absolute;top:8px;left:8px;display:flex;gap:5px">
-        <span style="font-family:var(--mono);font-size:8px;color:var(--cyan);background:rgba(2,11,20,.85);padding:3px 8px;border-radius:3px;border:1px solid rgba(0,229,255,.3)">📡 ${cvState.cpLabel}</span>
-        <span style="font-family:var(--mono);font-size:8px;color:var(--neon);background:rgba(2,11,20,.85);padding:3px 8px;border-radius:3px;border:1px solid rgba(57,255,20,.3)">MediaPipe · ${cvState.detections.length}obj</span>
-      </div>
-    </div>
+  body.innerHTML = `
 
-    <div style="display:flex;gap:10px;margin-bottom:12px">
-      <div style="flex-shrink:0;width:64px;height:64px;border-radius:50%;border:3px solid ${scoreColor};display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.3);box-shadow:0 0 12px ${scoreColor}50">
-        <div style="font-family:var(--head);font-size:18px;font-weight:900;color:${scoreColor};line-height:1">${score}</div>
-        <div style="font-family:var(--mono);font-size:7px;color:var(--dim)">SEG.</div>
+    <!-- ── SCORE + DESCRIPCIÓN ── -->
+    <div style="display:flex;align-items:center;gap:12px;
+      padding:14px;border-radius:10px;
+      background:rgba(10,32,53,.8);border:1px solid rgba(0,229,255,.15);">
+
+      <!-- Círculo de score -->
+      <div style="flex-shrink:0;width:72px;height:72px;border-radius:50%;
+        border:3px solid ${scoreColor};
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        background:rgba(0,0,0,.4);box-shadow:0 0 16px ${scoreColor}40;">
+        <div style="font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;
+          color:${scoreColor};line-height:1;">${score}</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:8px;
+          color:rgba(255,255,255,.4);margin-top:2px;">SEG.</div>
       </div>
-      <div style="flex:1">
-        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">
-          <div style="font-family:var(--mono);font-size:7px;padding:2px 7px;border-radius:3px;background:rgba(0,229,255,.1);color:var(--cyan);border:1px solid rgba(0,229,255,.25)">MediaPipe ${cvState.fps}fps</div>
-          <div style="font-family:var(--mono);font-size:7px;padding:2px 7px;border-radius:3px;background:rgba(57,255,20,.1);color:var(--neon);border:1px solid rgba(57,255,20,.25)">${cvState.metrics.persons} persona${cvState.metrics.persons!==1?"s":""}</div>
-          <div style="font-family:var(--mono);font-size:7px;padding:2px 7px;border-radius:3px;background:rgba(255,179,0,.1);color:var(--amber);border:1px solid rgba(255,179,0,.25)">Claude Haiku</div>
+
+      <!-- Descripción -->
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">
+          <span style="font-family:'Share Tech Mono',monospace;font-size:8px;
+            padding:3px 8px;border-radius:4px;
+            background:rgba(0,229,255,.12);color:#00E5FF;
+            border:1px solid rgba(0,229,255,.3);">📡 ${cvState.fps}fps</span>
+          <span style="font-family:'Share Tech Mono',monospace;font-size:8px;
+            padding:3px 8px;border-radius:4px;
+            background:rgba(57,255,20,.12);color:#39FF14;
+            border:1px solid rgba(57,255,20,.3);">
+            ${cvState.metrics.persons} persona${cvState.metrics.persons!==1?"s":""}</span>
+          <span style="font-family:'Share Tech Mono',monospace;font-size:8px;
+            padding:3px 8px;border-radius:4px;
+            background:rgba(255,179,0,.12);color:#FFB300;
+            border:1px solid rgba(255,179,0,.3);">Haiku</span>
         </div>
-        <div style="font-family:var(--body);font-size:11px;color:var(--t2);line-height:1.55">${analysis.escena || "Sin descripción."}</div>
+        <div style="font-size:13px;color:#80DEEA;line-height:1.6;
+          font-family:'Exo 2',sans-serif;">
+          ${analysis.escena || "Análisis completado."}
+        </div>
       </div>
     </div>
 
-    <!-- Métricas MediaPipe -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
-      ${[["OBJETOS",cvState.detections.length,"var(--cyan)"],["PERSONAS",cvState.metrics.persons,"var(--neon)"],["EQUIPOS",cvState.metrics.vehicles,"var(--amber)"],["ALERTAS MP",cvState.metrics.proximityAlerts.length,cvState.metrics.proximityAlerts.length?"var(--red)":"var(--dim)"],["POSES",cvState.poses.length,"var(--neon)"],["FPS",cvState.fps,cvState.fps>=20?"var(--neon)":"var(--amber)"]].map(([l,v,c])=>`
-        <div style="padding:8px 6px;border-radius:7px;background:rgba(10,32,53,.7);border:1px solid ${c}20;text-align:center">
-          <div style="font-family:var(--head);font-size:18px;font-weight:900;color:${c};line-height:1">${v}</div>
-          <div style="font-family:var(--mono);font-size:7px;color:var(--dim);margin-top:3px">${l}</div>
-        </div>`).join("")}
+    <!-- ── MÉTRICAS MEDIAPIPE — grid 3x2 ── -->
+    <div style="border-radius:10px;background:rgba(10,32,53,.8);
+      border:1px solid rgba(0,229,255,.12);overflow:hidden;">
+      <div style="padding:10px 14px;border-bottom:1px solid rgba(0,229,255,.1);
+        font-family:'Orbitron',sans-serif;font-size:9px;color:#00E5FF;letter-spacing:.1em;">
+        📡 MÉTRICAS EN TIEMPO REAL
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+        background:rgba(0,229,255,.06);">
+        ${[
+          ["OBJETOS",   cvState.detections.length,              "#00E5FF"],
+          ["PERSONAS",  cvState.metrics.persons,                "#39FF14"],
+          ["EQUIPOS",   cvState.metrics.vehicles,               "#FFB300"],
+          ["ALERTAS",   cvState.metrics.proximityAlerts.length, cvState.metrics.proximityAlerts.length ? "#FF1744" : "#37474F"],
+          ["POSES",     cvState.poses.length,                   "#39FF14"],
+          ["FPS",       cvState.fps,                            cvState.fps >= 20 ? "#39FF14" : "#FFB300"],
+        ].map(([l,v,c]) => `
+          <div style="padding:14px 8px;background:rgba(7,24,40,.95);text-align:center;">
+            <div style="font-family:'Orbitron',sans-serif;font-size:26px;font-weight:900;
+              color:${c};line-height:1;text-shadow:0 0 10px ${c}50;">${v}</div>
+            <div style="font-family:'Share Tech Mono',monospace;font-size:8px;
+              color:rgba(255,255,255,.35);margin-top:5px;letter-spacing:.06em;">${l}</div>
+          </div>`).join("")}
+      </div>
+      ${cvState.metrics.proximityAlerts.length > 0 ? `
+      <div style="padding:12px 14px;border-top:1px solid rgba(255,23,68,.2);
+        background:rgba(255,23,68,.06);">
+        ${cvState.metrics.proximityAlerts.map(a => `
+          <div style="display:flex;align-items:center;gap:8px;padding:4px 0;
+            font-family:'Share Tech Mono',monospace;font-size:11px;
+            color:${a.risk==="CRÍTICO"?"#FF1744":"#FFB300"};">
+            <span style="font-size:16px;">${a.risk==="CRÍTICO"?"🚨":"⚠"}</span>
+            Personal a <strong>${a.distMeters}m</strong> de ${a.vehicle}
+          </div>`).join("")}
+      </div>` : ""}
     </div>
 
-    ${cvState.metrics.proximityAlerts.length > 0 ? `
-    <div style="padding:8px 10px;border-radius:7px;background:rgba(255,23,68,.07);border:1px solid rgba(255,23,68,.3);margin-bottom:10px">
-      ${cvState.metrics.proximityAlerts.map(a=>`
-        <div style="font-family:var(--mono);font-size:9px;color:${a.risk==="CRÍTICO"?"var(--red)":"var(--amber)"};margin-bottom:2px">
-          ${a.risk==="CRÍTICO"?"🚨":"⚠"} Personal a <strong>${a.distMeters}m</strong> de ${a.vehicle}
-        </div>`).join("")}
-    </div>` : ""}
-
+    <!-- ── ALERTAS CRÍTICAS ── -->
     ${criticas.length > 0 ? `
-    <div style="border-radius:8px;overflow:hidden;border:1px solid rgba(255,23,68,.4);margin-bottom:10px;background:rgba(255,23,68,.06)">
-      <div style="padding:8px 12px;border-bottom:1px solid rgba(255,23,68,.25);font-family:var(--head);font-size:10px;color:var(--red);letter-spacing:.08em;display:flex;align-items:center;gap:6px">
-        <span style="animation:blink 1s infinite">🚨</span>${criticas.length} ALERTA${criticas.length>1?"S":""} CRÍTICA${criticas.length>1?"S":""}
+    <div style="border-radius:10px;overflow:hidden;
+      border:1.5px solid #FF174480;background:rgba(255,23,68,.07);">
+      <div style="padding:14px 16px;border-bottom:1px solid rgba(255,23,68,.2);
+        display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;animation:blink 1s infinite;">🚨</span>
+        <span style="font-family:'Orbitron',sans-serif;font-size:12px;
+          color:#FF1744;letter-spacing:.06em;font-weight:700;">
+          ${criticas.length} ALERTA${criticas.length>1?"S":""} CRÍTICA${criticas.length>1?"S":""}
+        </span>
       </div>
-      ${criticas.map(a=>`<div style="padding:8px 12px;border-bottom:1px solid rgba(255,23,68,.1);display:flex;gap:8px;align-items:flex-start">
-        <span style="font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:3px;background:rgba(255,23,68,.2);color:var(--red);flex-shrink:0;min-width:60px;text-align:center;">${a._mp?"📡 ":""}${a.categoria||"⚠"}</span>
-        <span style="font-family:var(--body);font-size:13px;color:var(--t1);line-height:1.6;">${a.mensaje}</span>
-      </div>`).join("")}
+      ${criticas.map(a => `
+        <div style="padding:14px 16px;border-bottom:1px solid rgba(255,23,68,.12);
+          display:flex;flex-direction:column;gap:8px;">
+          <span style="font-family:'Share Tech Mono',monospace;font-size:9px;
+            padding:4px 10px;border-radius:4px;align-self:flex-start;
+            background:rgba(255,23,68,.2);color:#FF1744;letter-spacing:.06em;">
+            ${a._mp?"📡 ":""}${a.categoria||"ALERTA"}
+          </span>
+          <span style="font-size:14px;color:#E0F7FA;line-height:1.65;
+            font-family:'Exo 2',sans-serif;">${a.mensaje}</span>
+        </div>`).join("")}
     </div>` : ""}
 
+    <!-- ── ADVERTENCIAS ── -->
     ${warns.length > 0 ? `
-    <div style="border-radius:8px;overflow:hidden;border:1px solid rgba(255,179,0,.3);margin-bottom:10px;background:rgba(255,179,0,.04)">
-      <div style="padding:7px 12px;border-bottom:1px solid rgba(255,179,0,.2);font-family:var(--head);font-size:10px;color:var(--amber);letter-spacing:.08em">⚠ ${warns.length} ADVERTENCIA${warns.length>1?"S":""}</div>
-      ${warns.map(a=>`<div style="padding:7px 12px;border-bottom:1px solid rgba(255,179,0,.08);display:flex;gap:8px;align-items:flex-start">
-        <span style="font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:3px;background:rgba(255,179,0,.12);color:var(--amber);flex-shrink:0;min-width:60px;text-align:center;">${a.categoria||"⚠"}</span>
-        <span style="font-family:var(--body);font-size:13px;color:var(--t2);line-height:1.6;">${a.mensaje}</span>
-      </div>`).join("")}
+    <div style="border-radius:10px;overflow:hidden;
+      border:1.5px solid #FFB30060;background:rgba(255,179,0,.05);">
+      <div style="padding:14px 16px;border-bottom:1px solid rgba(255,179,0,.2);
+        display:flex;align-items:center;gap:10px;">
+        <span style="font-size:18px;">⚠</span>
+        <span style="font-family:'Orbitron',sans-serif;font-size:12px;
+          color:#FFB300;letter-spacing:.06em;font-weight:700;">
+          ${warns.length} ADVERTENCIA${warns.length>1?"S":""}
+        </span>
+      </div>
+      ${warns.map(a => `
+        <div style="padding:14px 16px;border-bottom:1px solid rgba(255,179,0,.1);
+          display:flex;flex-direction:column;gap:8px;">
+          <span style="font-family:'Share Tech Mono',monospace;font-size:9px;
+            padding:4px 10px;border-radius:4px;align-self:flex-start;
+            background:rgba(255,179,0,.15);color:#FFB300;letter-spacing:.06em;">
+            ${a.categoria||"ADVERTENCIA"}
+          </span>
+          <span style="font-size:14px;color:#80DEEA;line-height:1.65;
+            font-family:'Exo 2',sans-serif;">${a.mensaje}</span>
+        </div>`).join("")}
     </div>` : ""}
 
+    <!-- ── INFO ── -->
+    ${infos.length > 0 ? `
+    <div style="border-radius:10px;overflow:hidden;
+      border:1px solid rgba(0,229,255,.2);background:rgba(0,229,255,.04);">
+      ${infos.map(a => `
+        <div style="padding:12px 16px;border-bottom:1px solid rgba(0,229,255,.08);
+          display:flex;flex-direction:column;gap:6px;">
+          <span style="font-family:'Share Tech Mono',monospace;font-size:9px;
+            padding:3px 8px;border-radius:4px;align-self:flex-start;
+            background:rgba(0,229,255,.12);color:#00E5FF;">
+            ℹ ${a.categoria||"INFO"}
+          </span>
+          <span style="font-size:13px;color:#4DD0E1;line-height:1.6;
+            font-family:'Exo 2',sans-serif;">${a.mensaje}</span>
+        </div>`).join("")}
+    </div>` : ""}
+
+    <!-- ── PERSONAL + EPP ── -->
     ${(analysis.personal||[]).length > 0 ? `
-    <div style="border-radius:8px;overflow:hidden;border:1px solid rgba(57,255,20,.18);margin-bottom:10px">
-      <div style="padding:8px 12px;border-bottom:1px solid rgba(57,255,20,.12);font-family:var(--head);font-size:10px;color:var(--neon);letter-spacing:.06em">
-        👷 PERSONAL (${analysis.personal.length}) · ${cvState.poses.length} pose${cvState.poses.length!==1?"s":""} detectada${cvState.poses.length!==1?"s":""}
+    <div style="border-radius:10px;overflow:hidden;
+      border:1px solid rgba(57,255,20,.2);background:rgba(57,255,20,.03);">
+      <div style="padding:14px 16px;border-bottom:1px solid rgba(57,255,20,.15);
+        display:flex;align-items:center;gap:8px;">
+        <span style="font-size:18px;">👷</span>
+        <span style="font-family:'Orbitron',sans-serif;font-size:11px;
+          color:#39FF14;letter-spacing:.06em;">
+          PERSONAL (${analysis.personal.length})
+          · ${cvState.poses.length} pose${cvState.poses.length!==1?"s":""}</span>
       </div>
-      ${analysis.personal.map(p=>`
-        <div style="padding:9px 12px;border-bottom:1px solid rgba(57,255,20,.06)">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <span style="font-family:var(--head);font-size:10px;color:var(--t1)">${p.rol_estimado||"Personal"}</span>
-            <span style="font-family:var(--mono);font-size:8px;padding:2px 6px;border-radius:3px;background:${p.cumple_seguridad?"rgba(57,255,20,.12)":"rgba(255,23,68,.15)"};color:${p.cumple_seguridad?"var(--neon)":"var(--red)"};border:1px solid ${p.cumple_seguridad?"rgba(57,255,20,.3)":"rgba(255,23,68,.35)"}">
-              ${p.cumple_seguridad?"✓ CUMPLE":"✗ INCUMPLE"}
+      ${analysis.personal.map(p => `
+        <div style="padding:14px 16px;border-bottom:1px solid rgba(57,255,20,.08);">
+          <div style="display:flex;align-items:center;justify-content:space-between;
+            gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-size:13px;color:#E0F7FA;font-family:'Exo 2',sans-serif;">
+              ${p.rol_estimado||"Personal de rampa"}
+            </span>
+            <span style="font-family:'Share Tech Mono',monospace;font-size:10px;
+              padding:6px 12px;border-radius:5px;
+              background:${p.cumple_seguridad?"rgba(57,255,20,.15)":"rgba(255,23,68,.15)"};
+              color:${p.cumple_seguridad?"#39FF14":"#FF1744"};
+              border:1px solid ${p.cumple_seguridad?"rgba(57,255,20,.4)":"rgba(255,23,68,.4)"};
+              white-space:nowrap;">
+              ${p.cumple_seguridad?"✓ CUMPLE EPP":"✗ INCUMPLE EPP"}
             </span>
           </div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
             ${[["🪖 Casco",p.ppe?.casco],["🦺 Chaleco",p.ppe?.chaleco]].map(([lbl,val])=>`
-              <span style="font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:3px;background:${val===null?"rgba(55,71,79,.3)":val?"rgba(57,255,20,.1)":"rgba(255,23,68,.15)"};color:${val===null?"var(--dim)":val?"var(--neon)":"var(--red)"};border:1px solid ${val===null?"rgba(55,71,79,.4)":val?"rgba(57,255,20,.3)":"rgba(255,23,68,.35)"}">
+              <span style="font-family:'Share Tech Mono',monospace;font-size:11px;
+                padding:7px 12px;border-radius:6px;
+                background:${val===null?"rgba(55,71,79,.3)":val?"rgba(57,255,20,.12)":"rgba(255,23,68,.15)"};
+                color:${val===null?"#546E7A":val?"#39FF14":"#FF1744"};
+                border:1px solid ${val===null?"rgba(55,71,79,.4)":val?"rgba(57,255,20,.35)":"rgba(255,23,68,.35)"};
+                min-height:40px;display:flex;align-items:center;">
                 ${lbl} ${val===null?"N/D":val?"✓":"✗"}
               </span>`).join("")}
-            <span style="font-family:var(--mono);font-size:8px;color:var(--dim)">Dist: ${p.distancia_zona_peligro||"—"}</span>
+            <span style="font-family:'Share Tech Mono',monospace;font-size:10px;
+              color:#546E7A;padding:7px 0;align-self:center;">
+              📏 ${p.distancia_zona_peligro||"—"}
+            </span>
           </div>
         </div>`).join("")}
     </div>` : ""}
 
+    <!-- ── SIN ALERTAS ── -->
     ${alertas.length === 0 ? `
-    <div style="padding:10px 13px;border-radius:8px;background:rgba(57,255,20,.05);border:1px solid rgba(57,255,20,.2);margin-bottom:14px;text-align:center">
-      <div style="font-family:var(--head);font-size:11px;color:var(--neon);letter-spacing:.06em">✅ SIN ALERTAS — ESCENA CONFORME</div>
+    <div style="padding:18px;border-radius:10px;
+      background:rgba(57,255,20,.06);border:1px solid rgba(57,255,20,.25);
+      text-align:center;">
+      <div style="font-size:28px;margin-bottom:8px;">✅</div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:12px;
+        color:#39FF14;letter-spacing:.06em;">SIN ALERTAS</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;
+        color:rgba(57,255,20,.6);margin-top:4px;">ESCENA CONFORME</div>
     </div>` : ""}
 
+    <!-- ── RECOMENDACIÓN ── -->
     ${analysis.recomendacion ? `
-    <div style="padding:10px 13px;border-radius:8px;background:rgba(0,229,255,.04);border:1px solid rgba(0,229,255,.15);margin-bottom:14px">
-      <div style="font-family:var(--mono);font-size:8px;color:var(--cyan);letter-spacing:.07em;margin-bottom:4px">💡 RECOMENDACIÓN OFICIAL</div>
-      <div style="font-family:var(--body);font-size:11px;color:var(--t2);line-height:1.6">${analysis.recomendacion}</div>
+    <div style="padding:16px;border-radius:10px;
+      background:rgba(0,229,255,.04);border:1px solid rgba(0,229,255,.18);">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:9px;
+        color:#00E5FF;letter-spacing:.08em;margin-bottom:8px;">
+        💡 RECOMENDACIÓN OFICIAL
+      </div>
+      <div style="font-size:13px;color:#80DEEA;line-height:1.7;
+        font-family:'Exo 2',sans-serif;">${analysis.recomendacion}</div>
     </div>` : ""}
 
-    <div style="display:flex;gap:8px;flex-direction:column">
-      <div style="display:flex;gap:8px">
-        <button onclick="acceptCvPhoto()" style="flex:2;padding:18px;border-radius:10px;
-          background:var(--neon);color:#001a00;border:none;font-family:var(--head);
-          font-size:13px;font-weight:700;letter-spacing:.06em;cursor:pointer;
-          min-height:54px;box-shadow:0 0 12px rgba(57,255,20,.4);
-          -webkit-tap-highlight-color:transparent;">✓ USAR FOTO + ANÁLISIS</button>
-        <button onclick="retryCvPhoto()" style="flex:1;padding:18px;border-radius:10px;
-          background:transparent;color:var(--cyan);border:1px solid rgba(0,229,255,.35);
-          font-family:var(--mono);font-size:12px;cursor:pointer;min-height:54px;
-          -webkit-tap-highlight-color:transparent;">↺ REPETIR</button>
+    </div><!-- /padding wrapper -->
+
+    <!-- ── BOTONES — touch targets 54px mínimo, fuera del wrapper con padding propio ── -->
+    <div style="display:flex;flex-direction:column;gap:10px;padding:0 14px 8px;">
+      <div style="display:flex;gap:10px;">
+        <button onclick="acceptCvPhoto()"
+          style="flex:2;min-height:54px;padding:16px;border-radius:12px;
+            background:#39FF14;color:#001a00;border:none;
+            font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;
+            letter-spacing:.06em;cursor:pointer;
+            box-shadow:0 0 16px rgba(57,255,20,.45);
+            -webkit-tap-highlight-color:transparent;">
+          ✓ USAR FOTO + ANÁLISIS
+        </button>
+        <button onclick="retryCvPhoto()"
+          style="flex:1;min-height:54px;padding:16px;border-radius:12px;
+            background:transparent;color:#00E5FF;
+            border:1.5px solid rgba(0,229,255,.4);
+            font-family:'Share Tech Mono',monospace;font-size:12px;
+            cursor:pointer;-webkit-tap-highlight-color:transparent;">
+          ↺ REPETIR
+        </button>
       </div>
-      <button onclick="closeCvModal()" style="width:100%;padding:16px;border-radius:8px;
-        background:transparent;color:var(--dim);border:1px solid rgba(55,71,79,.4);
-        font-family:var(--mono);font-size:11px;cursor:pointer;min-height:48px;
-        -webkit-tap-highlight-color:transparent;">✕ Cancelar</button>
+      <button onclick="closeCvModal()"
+        style="width:100%;min-height:48px;padding:14px;border-radius:10px;
+          background:transparent;color:#546E7A;
+          border:1px solid rgba(55,71,79,.4);
+          font-family:'Share Tech Mono',monospace;font-size:11px;
+          cursor:pointer;-webkit-tap-highlight-color:transparent;">
+        ✕ Cancelar
+      </button>
     </div>`;
 
   cvState.lastAnalysis = analysis;
-  showCvPanel("results");
-  // Scroll al tope del panel una vez renderizado
+
+  // Scroll al tope
   requestAnimationFrame(() => {
-    const outer = document.getElementById("cv-results-panel");
     if (outer) outer.scrollTop = 0;
   });
 }
+
 
 // annotatePhoto — async: espera que la imagen cargue antes de dibujar
 // Devuelve una Promise<dataURL> con los bboxes dibujados encima
@@ -5433,6 +5649,7 @@ function cvToggleImageZoom(img) {
 
   document.body.appendChild(overlay);
 }
+
 </script>
 
 </body>
